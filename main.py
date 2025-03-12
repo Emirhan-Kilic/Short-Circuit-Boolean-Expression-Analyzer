@@ -83,7 +83,7 @@ if st.button("Analyze"):
         vars_found, patterns = generate_short_circuit_tests(expression)
         
         if vars_found and patterns:
-            # Create DataFrame with 1-based index
+            # Create DataFrame with 1-based index for all patterns
             df = pd.DataFrame(patterns, columns=vars_found)
             df.index = df.index + 1  # Make index start from 1
             
@@ -105,14 +105,77 @@ if st.button("Analyze"):
                 ]}
             ])
             
-            # Display the styled table
+            # Display the full patterns table
+            st.write("### All Possible Patterns:")
             st.write(styled_df)
+            
+            # Generate minimal test cases
+            def select_minimal_test_cases(patterns, vars_found):
+                patterns_list = list(patterns)
+                n = len(vars_found)
+                selected = []
+                
+                # Track coverage for each variable
+                var_coverage = {var: {'T': False, 'F': False} for var in vars_found}
+                
+                # First pass: find patterns that give most T/F coverage
+                for pattern in patterns_list:
+                    if len(selected) >= n + 1:
+                        break
+                        
+                    pattern_dict = dict(zip(vars_found, pattern))
+                    coverage_added = False
+                    
+                    for var, val in pattern_dict.items():
+                        if val in ['T', 'F'] and not var_coverage[var][val]:
+                            var_coverage[var][val] = True
+                            coverage_added = True
+                    
+                    if coverage_added:
+                        selected.append(pattern)
+                
+                # If we need more patterns to reach n+1, add remaining patterns
+                while len(selected) < n + 1 and patterns_list:
+                    selected.append(patterns_list[0])
+                    patterns_list.pop(0)
+                
+                return selected
+
+            minimal_patterns = select_minimal_test_cases(patterns, vars_found)
+            
+            # Create and style minimal test cases table
+            minimal_df = pd.DataFrame(minimal_patterns, columns=vars_found)
+            minimal_df.index = minimal_df.index + 1
+            
+            styled_minimal_df = minimal_df.style.set_properties(**{
+                'text-align': 'center',
+                'font-size': '16px',
+                'padding': '5px'
+            }).set_table_styles([
+                {'selector': 'th', 'props': [
+                    ('text-align', 'center'),
+                    ('font-weight', 'bold'),
+                    ('font-size', '16px'),
+                    ('background-color', '#f0f2f6'),
+                    ('padding', '5px')
+                ]},
+                {'selector': 'td, th', 'props': [
+                    ('border', '1px solid #ddd')
+                ]}
+            ])
+            
+            # Display the minimal test cases table
+            st.write(f"""
+            ### Minimal Test Cases (n+1 = {len(vars_found)+1} cases):
+            These test cases ensure each variable has at least one True and one False evaluation when possible.
+            """)
+            st.write(styled_minimal_df)
             
             # Add explanation of the current expression
             st.markdown(f"""
             **Expression being analyzed:** `{expression}`
             
-            This table shows {len(patterns)} unique evaluation patterns for your expression.
+            The full table shows {len(patterns)} unique evaluation patterns for your expression.
             """)
         else:
             st.warning("Please enter a valid boolean expression with single-letter variables.")
