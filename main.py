@@ -49,6 +49,15 @@ def generate_short_circuit_tests(expression):
     # Return variables and patterns
     return vars_found, sorted(unique_patterns)
 
+def evaluate_expression(expression, values):
+    """Evaluate the expression with given variable values"""
+    # Create a dict with all variables set to their values
+    eval_dict = {var: bool(val == 'T') for var, val in values.items() if val in ['T', 'F']}
+    try:
+        return eval(expression, {}, eval_dict)
+    except:
+        return None
+
 # Streamlit UI
 st.title("Short Circuit Expression Analyzer")
 
@@ -83,8 +92,18 @@ if st.button("Analyze"):
         vars_found, patterns = generate_short_circuit_tests(expression)
         
         if vars_found and patterns:
+            # Create DataFrames with results
+            pattern_results = []
+            for pattern in patterns:
+                values = dict(zip(vars_found, pattern))
+                result = evaluate_expression(expression, values)
+                pattern_list = list(pattern)
+                pattern_list.append('T' if result else 'F' if result is not None else 'Error')
+                pattern_results.append(pattern_list)
+
             # Create DataFrame with 1-based index for all patterns
-            df = pd.DataFrame(patterns, columns=vars_found)
+            columns = vars_found + ['Result']
+            df = pd.DataFrame(pattern_results, columns=columns)
             df.index = df.index + 1  # Make index start from 1
             
             # Style the table
@@ -115,36 +134,68 @@ if st.button("Analyze"):
                 n = len(vars_found)
                 selected = []
                 
-                # Track coverage for each variable
+                # Track coverage for each variable and result
                 var_coverage = {var: {'T': False, 'F': False} for var in vars_found}
+                result_coverage = {'T': False, 'F': False}
                 
                 # First pass: find patterns that give most T/F coverage
-                for pattern in patterns_list:
+                for pattern in patterns_list[:]:
                     if len(selected) >= n + 1:
                         break
                         
-                    pattern_dict = dict(zip(vars_found, pattern))
+                    values = dict(zip(vars_found, pattern))
+                    result = evaluate_expression(expression, values)
                     coverage_added = False
                     
-                    for var, val in pattern_dict.items():
+                    # Check variable coverage
+                    for var, val in values.items():
                         if val in ['T', 'F'] and not var_coverage[var][val]:
                             var_coverage[var][val] = True
                             coverage_added = True
                     
+                    # Check result coverage
+                    result_val = 'T' if result else 'F'
+                    if not result_coverage[result_val]:
+                        result_coverage[result_val] = True
+                        coverage_added = True
+                    
                     if coverage_added:
                         selected.append(pattern)
+                        patterns_list.remove(pattern)
                 
-                # If we need more patterns to reach n+1, add remaining patterns
+                # If we need more patterns to reach n+1, prioritize patterns that give different results
                 while len(selected) < n + 1 and patterns_list:
-                    selected.append(patterns_list[0])
-                    patterns_list.pop(0)
+                    # Try to find a pattern with an uncovered result
+                    for pattern in patterns_list[:]:
+                        values = dict(zip(vars_found, pattern))
+                        result = evaluate_expression(expression, values)
+                        result_val = 'T' if result else 'F'
+                        
+                        if not result_coverage[result_val]:
+                            selected.append(pattern)
+                            patterns_list.remove(pattern)
+                            result_coverage[result_val] = True
+                            break
+                    else:
+                        # If no pattern with uncovered result found, just take the next pattern
+                        selected.append(patterns_list[0])
+                        patterns_list.pop(0)
                 
                 return selected
 
             minimal_patterns = select_minimal_test_cases(patterns, vars_found)
             
+            # Create minimal test cases with results
+            minimal_results = []
+            for pattern in minimal_patterns:
+                values = dict(zip(vars_found, pattern))
+                result = evaluate_expression(expression, values)
+                pattern_list = list(pattern)
+                pattern_list.append('T' if result else 'F' if result is not None else 'Error')
+                minimal_results.append(pattern_list)
+            
             # Create and style minimal test cases table
-            minimal_df = pd.DataFrame(minimal_patterns, columns=vars_found)
+            minimal_df = pd.DataFrame(minimal_results, columns=columns)
             minimal_df.index = minimal_df.index + 1
             
             styled_minimal_df = minimal_df.style.set_properties(**{
@@ -168,6 +219,7 @@ if st.button("Analyze"):
             st.write(f"""
             ### Minimal Test Cases (n+1 = {len(vars_found)+1} cases):
             These test cases ensure each variable has at least one True and one False evaluation when possible.
+            The 'Result' column shows the final evaluation of the expression for each pattern.
             """)
             st.write(styled_minimal_df)
             
@@ -176,6 +228,7 @@ if st.button("Analyze"):
             **Expression being analyzed:** `{expression}`
             
             The full table shows {len(patterns)} unique evaluation patterns for your expression.
+            'T' in the Result column means the expression evaluates to True, 'F' means False.
             """)
         else:
             st.warning("Please enter a valid boolean expression with single-letter variables.")
