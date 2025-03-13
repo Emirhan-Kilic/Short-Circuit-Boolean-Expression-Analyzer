@@ -2,6 +2,7 @@ import re
 import itertools
 import streamlit as st
 import pandas as pd
+import gc
 
 def generate_short_circuit_tests(expression):
     # Find single-letter variables (skip "and","or", etc. by matching entire word boundaries)
@@ -89,6 +90,11 @@ expression = st.text_input(
 
 if st.button("Analyze"):
     if expression:
+        # Clear Streamlit cache and garbage collect
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        gc.collect()
+        
         vars_found, patterns = generate_short_circuit_tests(expression)
         
         if vars_found and patterns:
