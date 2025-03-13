@@ -133,13 +133,14 @@ if st.button("Analyze"):
                 patterns_list = list(patterns)
                 n = len(vars_found)
                 selected = []
+                selected_indices = []  # Track indices of selected patterns
                 
                 # Track coverage for each variable and result
                 var_coverage = {var: {'T': False, 'F': False} for var in vars_found}
                 result_coverage = {'T': False, 'F': False}
                 
                 # First pass: find patterns that give most T/F coverage
-                for pattern in patterns_list[:]:
+                for i, pattern in enumerate(patterns_list[:]):
                     if len(selected) >= n + 1:
                         break
                         
@@ -161,29 +162,35 @@ if st.button("Analyze"):
                     
                     if coverage_added:
                         selected.append(pattern)
+                        selected_indices.append(i + 1)  # Add 1 since table is 1-indexed
                         patterns_list.remove(pattern)
                 
                 # If we need more patterns to reach n+1, prioritize patterns that give different results
+                remaining_indices = [i + 1 for i in range(len(patterns)) if i + 1 not in selected_indices]
+                pattern_index = 0
                 while len(selected) < n + 1 and patterns_list:
                     # Try to find a pattern with an uncovered result
-                    for pattern in patterns_list[:]:
+                    for i, pattern in enumerate(patterns_list[:]):
                         values = dict(zip(vars_found, pattern))
                         result = evaluate_expression(expression, values)
                         result_val = 'T' if result else 'F'
                         
                         if not result_coverage[result_val]:
                             selected.append(pattern)
+                            selected_indices.append(remaining_indices[pattern_index])
                             patterns_list.remove(pattern)
                             result_coverage[result_val] = True
                             break
                     else:
                         # If no pattern with uncovered result found, just take the next pattern
                         selected.append(patterns_list[0])
+                        selected_indices.append(remaining_indices[pattern_index])
                         patterns_list.pop(0)
+                    pattern_index += 1
                 
-                return selected
+                return selected, selected_indices
 
-            minimal_patterns = select_minimal_test_cases(patterns, vars_found)
+            minimal_patterns, selected_indices = select_minimal_test_cases(patterns, vars_found)
             
             # Create minimal test cases with results
             minimal_results = []
@@ -196,7 +203,7 @@ if st.button("Analyze"):
             
             # Create and style minimal test cases table
             minimal_df = pd.DataFrame(minimal_results, columns=columns)
-            minimal_df.index = minimal_df.index + 1
+            minimal_df.index = selected_indices  # Use the original row numbers
             
             styled_minimal_df = minimal_df.style.set_properties(**{
                 'text-align': 'center',
@@ -219,6 +226,7 @@ if st.button("Analyze"):
             st.write(f"""
             ### Minimal Test Cases (n+1 = {len(vars_found)+1} cases):
             These test cases ensure each variable has at least one True and one False evaluation when possible.
+            The row numbers correspond to the rows from the full table above that were selected for minimal coverage.
             The 'Result' column shows the final evaluation of the expression for each pattern.
             """)
             st.write(styled_minimal_df)
